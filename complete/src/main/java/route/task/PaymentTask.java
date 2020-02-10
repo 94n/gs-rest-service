@@ -1,9 +1,11 @@
 package route.task;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.web.reactive.function.client.WebClient;
 import route.data.Trip;
 import route.data.TripRepository;
 
@@ -12,25 +14,30 @@ public class PaymentTask {
 
     private final TripRepository tripRepository;
 
-    private final WebClient webClient;
+    private Logger logger = LoggerFactory.getLogger(PaymentTask.class);
+
+    private PaymentProcessor paymentProcessor;
 
     @Autowired
-    public PaymentTask(TripRepository tripRepository, WebClient.Builder webClientBuilder) {
+    public PaymentTask(TripRepository tripRepository, @Qualifier("real") PaymentProcessor paymentProcessor) {
         this.tripRepository = tripRepository;
-        this.webClient = webClientBuilder.baseUrl("http://localhost:8080").build();
+        this.paymentProcessor = paymentProcessor;
     }
 
     @Scheduled(fixedRate = 6000)
-    public void tryPayment() {
+    public short tryPayment() {
         Trip trip = tripRepository.findFirstByStateOrStateNull("processing");
         if (trip != null) {
-            String state = this.webClient.get().uri("/pay").retrieve().bodyToMono(String.class).block();
+            String state = paymentProcessor.tryPay();
             trip.setState(state);
             tripRepository.save(trip);
-            System.out.println(trip.getId() + " " + state);
+            logger.info(trip.getId() + " " + state);
+            return trip.getId();
         } else {
-            System.out.println("All done");
+            logger.info("All done");
         }
+        return -1;
     }
+
 
 }
